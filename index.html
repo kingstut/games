@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>three games</title>
+<title>games</title>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -19,15 +19,6 @@
     padding:56px 24px;
   }
   main{width:min(900px,100%)}
-  .eyebrow{
-    font-size:9px;letter-spacing:.34em;text-transform:uppercase;
-    color:#3f5266;margin-bottom:18px;
-  }
-  h1{
-    font-size:clamp(34px,6vw,52px);font-weight:200;letter-spacing:.16em;
-    margin:0 0 12px;line-height:1;
-  }
-  .lede{font-size:13px;color:#6b7f93;line-height:1.8;margin:0 0 42px;max-width:52ch}
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .card{
     position:relative;display:flex;flex-direction:column;
@@ -54,10 +45,6 @@
     margin-top:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
     font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--c);
   }
-  footer{
-    margin-top:34px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-    color:#2f3f50;
-  }
   @media (max-width:720px){
     .grid{grid-template-columns:1fr}
     .card{min-height:0}
@@ -67,10 +54,6 @@
 </head>
 <body>
 <main>
-  <div class="eyebrow">kingstut</div>
-  <h1>three games</h1>
-  <p class="lede">Self-contained HTML. No dependencies, no build step, no tracking. Each one runs offline once you've loaded it.</p>
-
   <div class="grid">
     <a class="card" href="murmur.html" style="--c:#5eead4">
       <div class="num">01</div>
@@ -93,8 +76,6 @@
       <span class="play">play &rarr;</span>
     </a>
   </div>
-
-  <footer>three games &nbsp;·&nbsp; built for the browser</footer>
 </main>
 </body>
 </html>
