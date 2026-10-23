@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>THE ARMS — a game about when to stop looking</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:
+      radial-gradient(900px 520px at 50% -8%, #16241c 0%, #0a0f0c 55%, #070a08 100%);
+    color:#e8e4d8;
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:22px;-webkit-font-smoothing:antialiased;
+  }
+  #app{width:min(880px,100%)}
+
+  header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px}
+  .brand{font-size:11px;letter-spacing:.34em;color:#7d8b81}
+  .hud{display:flex;gap:26px}
+  .hud div{text-align:right}
+  .hud b{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:20px;font-weight:400;color:#e8e4d8;line-height:1}
+  .hud span{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#55645a}
+
+  #arms{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .arm{
+    position:relative;font-family:inherit;text-align:left;cursor:pointer;
+    background:linear-gradient(180deg,#121c16,#0d1511);
+    border:1px solid #1e2b23;border-radius:12px;padding:16px 15px 14px;
+    color:#e8e4d8;transition:transform .12s ease,border-color .18s ease,background .18s ease;
+    overflow:hidden;
+  }
+  .arm:hover:not(:disabled){transform:translateY(-2px);border-color:#34473a}
+  .arm:active:not(:disabled){transform:translateY(0)}
+  .arm:disabled{cursor:default}
+  .arm .name{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;letter-spacing:.2em;color:#7d8b81;margin-bottom:14px;
+  }
+  .arm .nums{display:flex;align-items:baseline;gap:5px;margin-bottom:10px}
+  .arm .nums b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:27px;font-weight:400;line-height:1;color:#e8e4d8}
+  .arm .nums span{font-size:11px;color:#55645a}
+  .arm .bar{height:3px;border-radius:2px;background:#182620;overflow:hidden;margin-bottom:9px}
+  .arm .bar i{display:block;height:100%;width:0;background:var(--c);
+    transition:width .3s cubic-bezier(.2,.8,.2,1)}
+  .arm .pct{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px;color:#55645a;letter-spacing:.06em}
+  .arm .key{position:absolute;top:14px;right:14px;font-size:9px;color:#33423a;
+    border:1px solid #223029;border-radius:3px;padding:1px 4px}
+  .arm.win{animation:wflash .35s ease}
+  .arm.lose{animation:lflash .3s ease}
+  @keyframes wflash{0%{background:#1b3a24}100%{background:#0d1511}}
+  @keyframes lflash{0%{background:#241a17}100%{background:#0d1511}}
+
+  .float{
+    position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:16px;
+    pointer-events:none;animation:rise .7s ease forwards;
+  }
+  @keyframes rise{
+    0%{opacity:0;transform:translate(-50%,-40%)}
+    20%{opacity:1}
+    100%{opacity:0;transform:translate(-50%,-160%)}
+  }
+
+  #stripWrap{background:#0c1310;border:1px solid #182420;border-radius:10px;padding:12px 14px}
+  #stripLabel{font-size:9px;letter-spacing:.18em;text-transform:uppercase;
+    color:#4a5a51;margin-bottom:9px}
+  #strip{display:flex;flex-wrap:wrap;gap:2px}
+  .cell{width:9px;height:16px;border-radius:2px;background:#141d18;transition:background .2s}
+  #legend{display:flex;gap:16px;margin-top:11px}
+  #legend div{display:flex;align-items:center;gap:6px;font-size:9.5px;
+    letter-spacing:.1em;color:#55645a;text-transform:uppercase}
+  #legend i{width:7px;height:7px;border-radius:2px;display:block}
+
+  footer{margin-top:16px;font-size:11px;color:#4a5a51;letter-spacing:.04em;text-align:center}
+
+  #overlay{position:fixed;inset:0;background:#050807f2;backdrop-filter:blur(8px);
+    display:flex;align-items:center;justify-content:center;padding:22px;
+    opacity:0;pointer-events:none;transition:opacity .35s ease;z-index:20}
+  #overlay.show{opacity:1;pointer-events:auto}
+  .card{width:min(540px,100%);background:linear-gradient(180deg,#111a15,#0b110d);
+    border:1px solid #22302a;border-radius:16px;padding:30px 30px 26px}
+  .card .eyebrow{font-size:9px;letter-spacing:.26em;text-transform:uppercase;
+    color:#55645a;margin-bottom:14px}
+  .card h2{font-size:23px;font-weight:400;margin:0 0 4px;letter-spacing:.01em}
+  .card .sub{font-size:12px;color:#6b7a70;margin-bottom:22px}
+  .rows{display:flex;flex-direction:column;gap:0;margin-bottom:20px}
+  .row{display:flex;justify-content:space-between;align-items:baseline;
+    padding:9px 0;border-bottom:1px solid #182420;font-size:12.5px}
+  .row:last-child{border-bottom:0}
+  .row span{color:#7d8b81}
+  .row b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-weight:400;font-size:14px;color:#e8e4d8}
+  .row b.warn{color:#d4a24c}
+  .card #endStrip{margin:4px 0 18px}
+  .card p{font-size:12px;line-height:1.75;color:#6b7a70;margin:0 0 18px}
+  .card button{width:100%;background:#d4a24c;color:#1a1206;border:0;border-radius:8px;
+    padding:13px;font-family:inherit;font-size:12px;font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;cursor:pointer;transition:all .15s}
+  .card button:hover{background:#e8b968;transform:translateY(-1px)}
+
+  @media (max-width:640px){
+    #arms{grid-template-columns:repeat(2,1fr)}
+    .cell{width:7px;height:13px}
+    .brand{font-size:10px;letter-spacing:.24em}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">THE&nbsp;ARMS</div>
+    <div class="hud">
+      <div><b id="hPulls">60</b><span>pulls left</span></div>
+      <div><b id="hWins">0</b><span>wins</span></div>
+    </div>
+  </header>
+
+  <div id="arms"></div>
+
+  <div id="stripWrap">
+    <div id="stripLabel">every pull, in order</div>
+    <div id="strip"></div>
+    <div id="legend"></div>
+  </div>
+
+  <footer>four machines. one of them is better. sixty pulls. keys 1&ndash;4 also work.</footer>
+</div>
+
+<div id="overlay"><div class="card" id="card"></div></div>
+
+<script>
+(function(){
+  "use strict";
+
+  const PULLS = 60;
+  const COLORS = ["#6ea8fe", "#f0a35e", "#9d7bf5", "#4fd1c5"];
+  const NAMES  = ["A", "B", "C", "D"];
+
+  let S = null;
+
+  const el = {
+    hPulls: document.getElementById("hPulls"),
+    hWins: document.getElementById("hWins"),
+    arms: document.getElementById("arms"),
+    strip: document.getElementById("strip"),
+    legend: document.getElementById("legend"),
+    overlay: document.getElementById("overlay"),
+    card: document.getElementById("card")
+  };
+
+  /* ---------------- audio ---------------- */
+  let actx = null;
+  function tone(freq, dur, gain, type){
+    try {
+      if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if(actx.state === "suspended") actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || "sine";
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(gain, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur + 0.02);
+    } catch(e) {}
+  }
+
+  /* ---------------- game ---------------- */
+  function newGame(){
+    const best = 0.58 + Math.random() * 0.18;
+    const others = [];
+    for(let i = 0; i < 3; i++){
+      let p = 0.16 + Math.random() * 0.30;
+      if(p > best - 0.20) p = best - 0.20 - Math.random() * 0.08;
+      others.push(Math.max(0.10, p));
+    }
+    const ps = [best].concat(others);
+    for(let i = ps.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [ps[i], ps[j]] = [ps[j], ps[i]];
+    }
+
+    S = {
+      arms: ps.map((p, i) => ({ p, pulls: 0, wins: 0, i })),
+      pulls: 0, wins: 0, wasted: 0,
+      seq: [], locked: false, done: false, lastSwitch: -1
+    };
+
+    el.overlay.classList.remove("show");
+    buildArms();
+    buildLegend();
+    buildStrip();
+    render();
+  }
+
+  function buildArms(){
+    el.arms.innerHTML = S.arms.map((a, i) =>
+      '<button class="arm" data-i="' + i + '" style="--c:' + COLORS[i] + '">' +
+        '<div class="key">' + (i + 1) + '</div>' +
+        '<div class="name">' + NAMES[i] + '</div>' +
+        '<div class="nums"><b>0</b><span>/ 0</span></div>' +
+        '<div class="bar"><i></i></div>' +
+        '<div class="pct">&mdash;</div>' +
+      '</button>'
+    ).join("");
+    el.arms.querySelectorAll(".arm").forEach(b => {
+      b.addEventListener("click", () => pull(+b.dataset.i));
+    });
+  }
+
+  function buildLegend(){
+    el.legend.innerHTML = S.arms.map((a, i) =>
+      '<div><i style="background:' + COLORS[i] + '"></i>' + NAMES[i] + '</div>'
+    ).join("");
+  }
+
+  function buildStrip(){
+    el.strip.innerHTML = Array.from({ length: PULLS }, () => '<div class="cell"></div>').join("");
+  }
+
+  function ruledOut(){
+    const elig = S.arms.filter(a => a.pulls >= 6);
+    if(!elig.length) return S.arms.map(() => false);
+    const best = Math.max.apply(null, elig.map(a => a.wins / a.pulls));
+    return S.arms.map(a => a.pulls >= 6 && (a.wins / a.pulls) < best - 0.25);
+  }
+
+  function pull(i){
+    if(!S || S.locked || S.done) return;
+    const a = S.arms[i];
+    if(S.pulls >= PULLS) return;
+
+    S.locked = true;
+
+    const ruled = ruledOut();
+    if(ruled[i]) S.wasted++;
+
+    if(S.seq.length && S.seq[S.seq.length - 1].i !== i) S.lastSwitch = S.seq.length + 1;
+
+    a.pulls++;
+    const win = Math.random() < a.p;
+    if(win){ a.wins++; S.wins++; }
+    S.seq.push({ i, win });
+    S.pulls++;
+
+    render();
+    flash(i, win);
+    tone(win ? 720 : 240, win ? 0.12 : 0.06, win ? 0.035 : 0.02, win ? "sine" : "triangle");
+
+    if(S.pulls >= PULLS){
+      S.done = true;
+      setTimeout(endGame, 620);
+    } else {
+      setTimeout(() => { S.locked = false; }, 110);
+    }
+  }
+
+  function flash(i, win){
+    const node = el.arms.querySelector('[data-i="' + i + '"]');
+    if(!node) return;
+    node.classList.add(win ? "win" : "lose");
+    const f = document.createElement("div");
+    f.className = "float";
+    f.textContent = win ? "+1" : "\u00b7";
+    f.style.color = win ? "#7ee787" : "#4a5a51";
+    node.appendChild(f);
+    setTimeout(() => { node.classList.remove("win", "lose"); f.remove(); }, 720);
+  }
+
+  function render(){
+    el.hPulls.textContent = Math.max(0, PULLS - S.pulls);
+    el.hWins.textContent = S.wins;
+
+    S.arms.forEach((a, i) => {
+      const node = el.arms.querySelector('[data-i="' + i + '"]');
+      if(!node) return;
+      node.querySelector(".nums b").textContent = a.wins;
+      node.querySelector(".nums span").textContent = "/ " + a.pulls;
+      const rate = a.pulls ? a.wins / a.pulls : 0;
+      node.querySelector(".bar i").style.width = (rate * 100).toFixed(0) + "%";
+      node.querySelector(".pct").textContent = a.pulls
+        ? (rate * 100).toFixed(0) + "% observed"
+        : "no data";
+    });
+
+    const cells = el.strip.children;
+    for(let i = 0; i < cells.length; i++){
+      const s = S.seq[i];
+      if(!s){ cells[i].style.background = "#141d18"; continue; }
+      cells[i].style.background = COLORS[s.i];
+      cells[i].style.opacity = s.win ? "0.92" : "0.30";
+    }
+  }
+
+  /* ---------------- end ---------------- */
+  function endGame(){
+    const bestArm = S.arms.reduce((a, b) => (b.p > a.p ? b : a));
+    const expected = bestArm.p * PULLS;
+    const rate = bestArm.wins / Math.max(1, bestArm.pulls);
+
+    const wastedPct = Math.round((S.wasted / PULLS) * 100);
+    let note;
+    if(S.wasted <= 2){
+      note = "you stopped checking almost as soon as the answer was in.";
+    } else if(S.wasted <= 8){
+      note = "a few pulls went back to machines you had already ruled out.";
+    } else if(S.wasted <= 20){
+      note = "you kept checking machines that were already clearly behind.";
+    } else {
+      note = "a large share of your pulls went to machines you had already ruled out.";
+    }
+
+    el.card.innerHTML =
+      '<div class="eyebrow">sixty pulls</div>' +
+      '<h2>' + S.wins + ' wins</h2>' +
+      '<div class="sub">the best machine paid ' + (bestArm.p * 100).toFixed(0) +
+        '% &mdash; it would have paid about ' + Math.round(expected) + '.</div>' +
+
+      '<div id="endStrip" class="stripMini"></div>' +
+
+      '<div class="rows">' +
+        '<div class="row"><span>pulls on the eventual best machine</span><b>' +
+          bestArm.pulls + ' of 60</b></div>' +
+        '<div class="row"><span>pulls after your last switch</span><b>' +
+          (S.lastSwitch < 0 ? 'never switched' : (PULLS - S.lastSwitch + 1)) + '</b></div>' +
+        '<div class="row"><span>pulls on machines already ruled out</span><b class="warn">' +
+          S.wasted + ' (' + wastedPct + '%)</b></div>' +
+      '</div>' +
+
+      '<p>' + note + '</p>' +
+      '<button id="again">play again</button>';
+
+    // mini strip
+    const mini = el.card.querySelector("#endStrip");
+    mini.style.display = "flex";
+    mini.style.flexWrap = "wrap";
+    mini.style.gap = "2px";
+    mini.innerHTML = S.seq.map(s =>
+      '<div style="width:9px;height:16px;border-radius:2px;background:' +
+      COLORS[s.i] + ';opacity:' + (s.win ? 0.92 : 0.3) + '"></div>'
+    ).join("");
+
+    el.overlay.classList.add("show");
+    document.getElementById("again").addEventListener("click", newGame);
+  }
+
+  /* ---------------- input ---------------- */
+  window.addEventListener("keydown", e => {
+    const n = parseInt(e.key, 10);
+    if(n >= 1 && n <= 4) pull(n - 1);
+  });
+
+  /* ---------------- boot ---------------- */
+  function intro(){
+    el.card.innerHTML =
+      '<div class="eyebrow">a game about when to stop looking</div>' +
+      '<h2>Four machines.</h2>' +
+      '<div class="sub">hidden odds. sixty pulls.</div>' +
+      '<p>Each machine pays out on a different hidden probability. One of them is better ' +
+      'than the rest. You don\u2019t know which, or by how much, and the only way to find out ' +
+      'is to spend pulls.</p>' +
+      '<p>Every pull you spend on a machine you have already ruled out is a pull you did not ' +
+      'spend on the one that was winning.</p>' +
+      '<button id="begin">pull</button>';
+    el.overlay.classList.add("show");
+    document.getElementById("begin").addEventListener("click", newGame);
+  }
+
+  intro();
+})();
+</script>
+</body>
+</html>

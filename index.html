@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>three games</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(900px 520px at 50% -10%, #101c26 0%, #070a10 55%, #05070b 100%);
+    color:#e6edf3;
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;align-items:center;justify-content:center;
+    padding:56px 24px;
+  }
+  main{width:min(900px,100%)}
+  .eyebrow{
+    font-size:9px;letter-spacing:.34em;text-transform:uppercase;
+    color:#3f5266;margin-bottom:18px;
+  }
+  h1{
+    font-size:clamp(34px,6vw,52px);font-weight:200;letter-spacing:.16em;
+    margin:0 0 12px;line-height:1;
+  }
+  .lede{font-size:13px;color:#6b7f93;line-height:1.8;margin:0 0 42px;max-width:52ch}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .card{
+    position:relative;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,#0e151d,#0a0f16);
+    border:1px solid #1a2531;border-radius:14px;
+    padding:22px 20px 18px;text-decoration:none;color:inherit;
+    transition:transform .18s ease,border-color .18s ease,background .18s ease;
+    overflow:hidden;min-height:230px;
+  }
+  .card::before{
+    content:"";position:absolute;inset:0 0 auto 0;height:2px;
+    background:var(--c);opacity:.55;transition:opacity .18s ease;
+  }
+  .card:hover{transform:translateY(-3px);border-color:#2c3d4e;background:linear-gradient(180deg,#121b25,#0b1118)}
+  .card:hover::before{opacity:1}
+  .num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px;letter-spacing:.2em;color:#33455a;margin-bottom:26px}
+  .card h2{
+    font-size:19px;font-weight:500;letter-spacing:.16em;margin:0 0 10px;
+    color:#e6edf3;
+  }
+  .card p{font-size:12px;line-height:1.75;color:#6b7f93;margin:0 0 22px}
+  .play{
+    margin-top:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--c);
+  }
+  footer{
+    margin-top:34px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:#2f3f50;
+  }
+  @media (max-width:720px){
+    .grid{grid-template-columns:1fr}
+    .card{min-height:0}
+    .num{margin-bottom:18px}
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">kingstut</div>
+  <h1>three games</h1>
+  <p class="lede">Self-contained HTML. No dependencies, no build step, no tracking. Each one runs offline once you've loaded it.</p>
+
+  <div class="grid">
+    <a class="card" href="murmur.html" style="--c:#5eead4">
+      <div class="num">01</div>
+      <h2>MURMUR</h2>
+      <p>Herd a drifting flock with your cursor. Keep it calm, hold it in the ring, and don't let the predators thin it out.</p>
+      <span class="play">play &rarr;</span>
+    </a>
+
+    <a class="card" href="arms.html" style="--c:#d4a24c">
+      <div class="num">02</div>
+      <h2>THE ARMS</h2>
+      <p>Four machines with hidden odds. Sixty pulls. One of them is better than the rest &mdash; and finding out costs you.</p>
+      <span class="play">play &rarr;</span>
+    </a>
+
+    <a class="card" href="deflect.html" style="--c:#7df9ff">
+      <div class="num">03</div>
+      <h2>DEFLECT</h2>
+      <p>One shield, three lives. Swing it with the mouse and send every shot back where it came from.</p>
+      <span class="play">play &rarr;</span>
+    </a>
+  </div>
+
+  <footer>three games &nbsp;·&nbsp; built for the browser</footer>
+</main>
+</body>
+</html>

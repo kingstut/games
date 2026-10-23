@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>DEFLECT</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#04060c;
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e6f0f5}
+  canvas{display:block;cursor:none;touch-action:none}
+  #hud{position:fixed;inset:0;pointer-events:none;padding:20px 24px;
+    display:flex;justify-content:space-between;align-items:flex-start}
+  #lives{display:flex;gap:8px;align-items:center;padding-top:5px}
+  .life{width:9px;height:9px;border-radius:50%;background:#5eead4;
+    box-shadow:0 0 10px #5eead488;transition:all .35s ease}
+  .life.dead{background:#16222e;box-shadow:none;transform:scale(.7)}
+  #scoreWrap{text-align:right}
+  #score{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:31px;
+    font-weight:400;line-height:1;letter-spacing:-.02em}
+  #scoreWrap i{font-style:normal;display:block;font-size:9px;letter-spacing:.22em;
+    text-transform:uppercase;color:#3f5266;margin-top:6px}
+  #combo{position:fixed;right:24px;top:82px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:15px;color:#5eead4;opacity:0;transform:translateY(-5px);
+    transition:opacity .18s ease,transform .18s ease;text-align:right}
+  #combo.on{opacity:1;transform:translateY(0)}
+
+  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(720px 540px at 50% 48%,#071019e0,#03050af7);
+    backdrop-filter:blur(4px);transition:opacity .4s ease;z-index:10;padding:24px}
+  #overlay.hide{opacity:0;pointer-events:none}
+  .panel{text-align:center;max-width:470px}
+  .panel .eyebrow{font-size:9px;letter-spacing:.32em;text-transform:uppercase;
+    color:#3f5266;margin-bottom:18px}
+  .panel h1{font-size:48px;font-weight:200;letter-spacing:.32em;margin:0 0 8px;
+    color:#e6f0f5;text-indent:.32em}
+  .panel .tag{font-size:12px;color:#5b7186;letter-spacing:.05em;margin-bottom:28px}
+  .panel p{font-size:12.5px;line-height:1.95;color:#7d90a4;margin:0 0 26px}
+  .panel p b{color:#cfe0ec;font-weight:500}
+  .panel button{background:#5eead4;color:#03201c;border:0;border-radius:6px;
+    padding:14px 38px;font-family:inherit;font-size:12px;font-weight:600;
+    letter-spacing:.18em;text-transform:uppercase;cursor:pointer;transition:all .15s}
+  .panel button:hover{background:#99f6e4;transform:translateY(-1px)}
+  .panel .big{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:56px;font-weight:200;color:#5eead4;line-height:1;margin:4px 0 6px}
+  .panel .sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#3f5266}
+  .panel .row{display:flex;gap:36px;justify-content:center;margin:26px 0 30px}
+  .panel .row div{text-align:center}
+  .panel .row .v{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:18px;color:#cfe0ec;display:block;margin-bottom:5px}
+  .panel .row .k{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#3f5266}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="lives"></div>
+  <div id="scoreWrap"><div id="score">0</div><i>score</i></div>
+</div>
+<div id="combo"></div>
+
+<div id="overlay"><div class="panel" id="panel"></div></div>
+
+<script>
+(function(){
+  "use strict";
+
+  const TAU = Math.PI * 2;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  function angDiff(a, b){
+    let d = (a - b) % TAU;
+    if(d > Math.PI) d -= TAU;
+    if(d < -Math.PI) d += TAU;
+    return d;
+  }
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1, CX = 0, CY = 0, R = 300, SR = 84;
+
+  const SPAN = 0.92;          // shield arc width, radians
+  const CORE_R = 12;
+  const ENEMY_R = 26;         // inset from the rim
+
+  const S = {
+    running: false, over: false, t: 0,
+    score: 0, best: 0, kills: 0,
+    lives: 3, combo: 0, comboT: 0,
+    shieldA: -Math.PI / 2, shieldTarget: -Math.PI / 2, shieldFlash: 0,
+    enemies: [], bullets: [], parts: [], rings: [],
+    shake: 0, hitFlash: 0, slow: 0, invuln: 0, spawnT: 0,
+    muted: false, deadT: 0
+  };
+
+  try { S.best = parseInt(localStorage.getItem('deflect.best') || '0', 10) || 0; } catch(e) {}
+
+  const el = {
+    score: document.getElementById('score'),
+    lives: document.getElementById('lives'),
+    combo: document.getElementById('combo'),
+    overlay: document.getElementById('overlay'),
+    panel: document.getElementById('panel')
+  };
+
+  /* ---------------- audio ---------------- */
+  let actx = null;
+  function tone(freq, dur, type, gain, slideTo){
+    if(S.muted) return;
+    try {
+      if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if(actx.state === 'suspended') actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, actx.currentTime);
+      if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, actx.currentTime + dur);
+      g.gain.setValueAtTime(gain || 0.04, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur + 0.03);
+    } catch(e) {}
+  }
+  function noise(dur, gain){
+    if(S.muted) return;
+    try {
+      if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      const n = actx.sampleRate * dur | 0;
+      const buf = actx.createBuffer(1, n, actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = actx.createBufferSource(), g = actx.createGain();
+      src.buffer = buf; g.gain.value = gain || 0.06;
+      src.connect(g); g.connect(actx.destination); src.start();
+    } catch(e) {}
+  }
+
+  /* ---------------- layout ---------------- */
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    CX = W / 2; CY = H * 0.52;
+    R = Math.min(W, H) * 0.42;
+    SR = clamp(R * 0.30, 58, 96);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+
+  /* ---------------- fx ---------------- */
+  function burst(x, y, n, color, spd){
+    for(let i = 0; i < n; i++){
+      const a = rnd(0, TAU), s = rnd(20, spd || 260);
+      S.parts.push({
+        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: rnd(0.25, 0.7), max: 0.7, r: rnd(1, 3), color
+      });
+    }
+    if(S.parts.length > 420) S.parts.splice(0, S.parts.length - 420);
+  }
+  function ring(x, y, r0, r1, color, dur){
+    S.rings.push({ x, y, r0, r1, color, life: dur || 0.45, max: dur || 0.45 });
+  }
+
+  /* ---------------- game ---------------- */
+  function spawnEnemy(){
+    S.enemies.push({
+      a: rnd(0, TAU),
+      spin: (Math.random() < 0.5 ? -1 : 1) * rnd(0.05, 0.14),
+      charge: 0,
+      fireT: rnd(1.0, 2.2),
+      age: 0, dead: false
+    });
+  }
+
+  function enemyPos(e){
+    return { x: CX + Math.cos(e.a) * (R - ENEMY_R), y: CY + Math.sin(e.a) * (R - ENEMY_R) };
+  }
+
+  function spawnBullet(e){
+    const p = enemyPos(e);
+    const a = Math.atan2(CY - p.y, CX - p.x) + rnd(-0.045, 0.045);
+    const sp = 195 + Math.min(270, S.t * 2.5);
+    S.bullets.push({
+      x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      friendly: false, r: 5.5, life: 9, target: null, trail: [], dead: false
+    });
+    ring(p.x, p.y, 4, 16, 'rgba(255,138,92,0.5)', 0.3);
+  }
+
+  function reset(){
+    S.running = true; S.over = false; S.t = 0;
+    S.score = 0; S.kills = 0; S.lives = 3;
+    S.combo = 0; S.comboT = 0;
+    S.enemies = []; S.bullets = []; S.parts = []; S.rings = [];
+    S.shake = 0; S.hitFlash = 0; S.slow = 0; S.invuln = 0;
+    S.spawnT = 1.5; S.deadT = 0; S.shieldFlash = 0;
+    S.shieldA = -Math.PI / 2; S.shieldTarget = -Math.PI / 2;
+    spawnEnemy(); spawnEnemy();
+    el.overlay.classList.add('hide');
+    updateHud();
+  }
+
+  function killEnemy(e){
+    e.dead = true;
+    S.kills++;
+    S.combo++;
+    S.comboT = 3.2;
+    S.score += 10 * S.combo;
+    const p = enemyPos(e);
+    burst(p.x, p.y, 16, '#ff5c7a', 300);
+    ring(p.x, p.y, 6, 44, 'rgba(255,92,122,0.6)', 0.45);
+    tone(320 + Math.min(600, S.combo * 55), 0.12, 'triangle', 0.035, 520 + S.combo * 40);
+    if(S.combo >= 3 && S.slow <= 0){
+      S.slow = 0.22;
+      S.shake = Math.max(S.shake, 0.3);
+    }
+    updateHud();
+  }
+
+  function reflect(b){
+    b.friendly = true;
+    const d = Math.hypot(b.x - CX, b.y - CY) || 1;
+    const nx = (b.x - CX) / d, ny = (b.y - CY) / d;
+    const sp = Math.hypot(b.vx, b.vy) * 1.55;
+    b.vx = nx * sp; b.vy = ny * sp;
+    b.life = 4.5;
+    b.trail.length = 0;
+
+    let best = null, bd = Infinity;
+    for(const e of S.enemies){
+      if(e.dead) continue;
+      const p = enemyPos(e);
+      const dd = (p.x - b.x) * (p.x - b.x) + (p.y - b.y) * (p.y - b.y);
+      if(dd < bd){ bd = dd; best = e; }
+    }
+    b.target = best;
+
+    S.shieldFlash = 1;
+    S.shake = Math.max(S.shake, 0.18);
+    burst(b.x, b.y, 9, '#7df9ff', 240);
+    ring(b.x, b.y, 6, 30, 'rgba(125,249,255,0.65)', 0.32);
+    tone(980 + Math.min(700, S.combo * 40), 0.07, 'square', 0.022, 1500 + S.combo * 40);
+  }
+
+  function hitCore(){
+    if(S.invuln > 0) return;
+    S.lives--;
+    S.combo = 0; S.comboT = 0;
+    S.invuln = 1.15;
+    S.shake = 1;
+    S.hitFlash = 1;
+    noise(0.3, 0.09);
+    tone(90, 0.28, 'sawtooth', 0.07, 40);
+    updateHud();
+    if(S.lives <= 0) die();
+  }
+
+  function die(){
+    S.running = false;
+    S.over = true;
+    S.deadT = 0;
+    S.slow = 0.5;
+    S.shake = 1.2;
+    burst(CX, CY, 46, '#7df9ff', 420);
+    ring(CX, CY, 10, R, 'rgba(125,249,255,0.5)', 0.8);
+    if(S.score > S.best){
+      S.best = S.score;
+      try { localStorage.setItem('deflect.best', String(S.best)); } catch(e) {}
+    }
+    setTimeout(showEnd, 900);
+  }
+
+  /* ---------------- update ---------------- */
+  function update(dt){
+    S.t += dt;
+
+    if(S.shake > 0) S.shake = Math.max(0, S.shake - dt * 3.2);
+    if(S.hitFlash > 0) S.hitFlash = Math.max(0, S.hitFlash - dt * 2.0);
+    if(S.shieldFlash > 0) S.shieldFlash = Math.max(0, S.shieldFlash - dt * 4.5);
+    if(S.slow > 0) S.slow = Math.max(0, S.slow - dt);
+    if(S.invuln > 0) S.invuln = Math.max(0, S.invuln - dt);
+    if(S.comboT > 0){
+      S.comboT -= dt;
+      if(S.comboT <= 0){ S.combo = 0; updateHud(); }
+    }
+
+    // shield easing
+    S.shieldA += angDiff(S.shieldTarget, S.shieldA) * Math.min(1, dt * 24);
+
+    // spawn
+    const maxE = Math.min(10, 2 + Math.floor(S.t / 10));
+    S.spawnT -= dt;
+    if(S.enemies.length < maxE && S.spawnT <= 0){
+      spawnEnemy();
+      S.spawnT = 1.0;
+      ring(CX, CY, R * 0.9, R * 0.7, 'rgba(255,92,122,0.25)', 0.5);
+      tone(220, 0.2, 'sine', 0.02, 160);
+    }
+
+    // enemies
+    for(const e of S.enemies){
+      e.age += dt;
+      e.a += e.spin * dt;
+      if(e.charge > 0){
+        e.charge += dt / 0.42;
+        if(e.charge >= 1){
+          e.charge = 0;
+          e.fireT = Math.max(0.65, 2.1 - S.t * 0.012) * rnd(0.85, 1.15);
+          spawnBullet(e);
+        }
+      } else {
+        e.fireT -= dt;
+        if(e.fireT <= 0) e.charge = 0.0001;
+      }
+    }
+    S.enemies = S.enemies.filter(e => !e.dead);
+
+    // bullets
+    for(const b of S.bullets){
+      b.life -= dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.trail.push({ x: b.x, y: b.y });
+      if(b.trail.length > 9) b.trail.shift();
+
+      const d = Math.hypot(b.x - CX, b.y - CY);
+
+      if(b.friendly){
+        if(b.target && !b.target.dead){
+          const p = enemyPos(b.target);
+          const want = Math.atan2(p.y - b.y, p.x - b.x);
+          const cur = Math.atan2(b.vy, b.vx);
+          const turn = clamp(angDiff(want, cur), -6 * dt, 6 * dt);
+          const sp = Math.hypot(b.vx, b.vy);
+          b.vx = Math.cos(cur + turn) * sp;
+          b.vy = Math.sin(cur + turn) * sp;
+        }
+        for(const e of S.enemies){
+          if(e.dead) continue;
+          const p = enemyPos(e);
+          if((b.x - p.x) * (b.x - p.x) + (b.y - p.y) * (b.y - p.y) < 22 * 22){
+            killEnemy(e);
+            b.dead = true;
+            break;
+          }
+        }
+      } else {
+        // shield intercept
+        if(d > SR - 15 && d < SR + 15){
+          const ba = Math.atan2(b.y - CY, b.x - CX);
+          if(Math.abs(angDiff(ba, S.shieldA)) < SPAN / 2 + 0.05) reflect(b);
+        }
+        // core
+        if(!b.dead && d < CORE_R + 8){
+          b.dead = true;
+          hitCore();
+        }
+      }
+
+      if(d > R + 70 || b.life <= 0) b.dead = true;
+    }
+    S.bullets = S.bullets.filter(b => !b.dead);
+
+    // particles
+    for(const p of S.parts){
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.96; p.vy *= 0.96;
+    }
+    S.parts = S.parts.filter(p => p.life > 0);
+
+    // rings
+    for(const r of S.rings) r.life -= dt;
+    S.rings = S.rings.filter(r => r.life > 0);
+  }
+
+  /* ---------------- hud ---------------- */
+  function updateHud(){
+    el.score.textContent = S.score;
+    let h = '';
+    for(let i = 0; i < 3; i++) h += '<div class="life' + (i < S.lives ? '' : ' dead') + '"></div>';
+    el.lives.innerHTML = h;
+    if(S.combo >= 2){
+      el.combo.textContent = '×' + S.combo;
+      el.combo.classList.add('on');
+    } else {
+      el.combo.classList.remove('on');
+    }
+  }
+
+  /* ---------------- draw ---------------- */
+  function draw(){
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#04060c';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    if(S.shake > 0){
+      const s = S.shake * 9;
+      ctx.translate(rnd(-s, s), rnd(-s, s));
+    }
+
+    // ambient glow
+    const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 1.45);
+    g.addColorStop(0, 'rgba(24,48,76,0.55)');
+    g.addColorStop(0.55, 'rgba(9,18,30,0.28)');
+    g.addColorStop(1, 'rgba(4,6,12,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // rings
+    ctx.strokeStyle = 'rgba(96,140,180,0.075)';
+    ctx.lineWidth = 1;
+    for(let i = 1; i <= 3; i++){
+      ctx.beginPath();
+      ctx.arc(CX, CY, R * (i / 3), 0, TAU);
+      ctx.stroke();
+    }
+    // spokes
+    ctx.strokeStyle = 'rgba(96,140,180,0.045)';
+    for(let i = 0; i < 12; i++){
+      const a = i / 12 * TAU + S.t * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(CX + Math.cos(a) * R * 0.22, CY + Math.sin(a) * R * 0.22);
+      ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+      ctx.stroke();
+    }
+    // rim
+    ctx.strokeStyle = 'rgba(120,170,210,0.16)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, TAU);
+    ctx.stroke();
+
+    // rings (fx)
+    for(const r of S.rings){
+      const k = 1 - r.life / r.max;
+      const rad = r.r0 + (r.r1 - r.r0) * k;
+      ctx.strokeStyle = r.color;
+      ctx.globalAlpha = r.life / r.max;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, rad, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // enemies
+    for(const e of S.enemies){
+      const p = enemyPos(e);
+      const pulse = 1 + Math.sin(S.t * 4 + e.a * 3) * 0.1;
+
+      if(e.charge > 0){
+        ctx.strokeStyle = 'rgba(255,92,122,' + (0.06 + e.charge * 0.30).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(CX, CY);
+        ctx.stroke();
+      }
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(e.a + Math.PI / 2);
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = '#ff5c7a';
+      ctx.fillStyle = '#ff5c7a';
+      const s = 7.5 * pulse + e.charge * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -s);
+      ctx.lineTo(s * 0.78, 0);
+      ctx.lineTo(0, s);
+      ctx.lineTo(-s * 0.78, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+
+    // core
+    const cp = 1 + Math.sin(S.t * 5) * 0.07;
+    ctx.shadowBlur = 34;
+    ctx.shadowColor = '#7df9ff';
+    ctx.fillStyle = (S.invuln > 0 && Math.floor(S.t * 14) % 2) ? 'rgba(125,249,255,0.30)' : '#e2fdff';
+    ctx.beginPath();
+    ctx.arc(CX, CY, CORE_R * cp, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // shield
+    const a0 = S.shieldA - SPAN / 2, a1 = S.shieldA + SPAN / 2;
+    const hot = S.shieldFlash;
+    ctx.shadowBlur = 26 + hot * 20;
+    ctx.shadowColor = '#5eead4';
+    ctx.strokeStyle = hot > 0.05 ? 'rgba(220,255,252,' + (0.85 + hot * 0.15) + ')' : '#5eead4';
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(CX, CY, SR, a0, a1);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(230,255,252,0.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(CX, CY, SR, a0, a1);
+    ctx.stroke();
+
+    // bullets
+    for(const b of S.bullets){
+      const col = b.friendly ? '#7df9ff' : '#ff8a5c';
+      for(let i = 0; i < b.trail.length; i++){
+        const t = i / b.trail.length;
+        ctx.globalAlpha = t * (b.friendly ? 0.5 : 0.32);
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(b.trail[i].x, b.trail[i].y, b.r * (0.35 + t * 0.55), 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = col;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, TAU);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r * 0.4, 0, TAU);
+      ctx.fill();
+    }
+
+    // particles
+    for(const p of S.parts){
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // damage vignette
+    if(S.hitFlash > 0){
+      const vg = ctx.createRadialGradient(CX, CY, R * 0.25, CX, CY, R * 1.55);
+      vg.addColorStop(0, 'rgba(255,40,70,0)');
+      vg.addColorStop(1, 'rgba(255,40,70,' + (S.hitFlash * 0.38).toFixed(3) + ')');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // permanent vignette
+    const vg2 = ctx.createRadialGradient(CX, CY, R * 0.9, CX, CY, R * 1.9);
+    vg2.addColorStop(0, 'rgba(0,0,0,0)');
+    vg2.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg2;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ---------------- loop ---------------- */
+  let last = 0;
+  function frame(now){
+    if(!last) last = now;
+    let dt = (now - last) / 1000;
+    last = now;
+    dt = Math.min(dt, 0.05);
+
+    if(S.running){
+      const scale = S.slow > 0 ? 0.35 : 1;
+      update(dt * scale);
+    } else {
+      S.t += dt;
+      if(S.shake > 0) S.shake = Math.max(0, S.shake - dt * 2.5);
+      if(S.hitFlash > 0) S.hitFlash = Math.max(0, S.hitFlash - dt * 2);
+      if(S.slow > 0) S.slow = Math.max(0, S.slow - dt);
+      for(const p of S.parts){
+        p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96;
+      }
+      S.parts = S.parts.filter(p => p.life > 0);
+      for(const r of S.rings) r.life -= dt;
+      S.rings = S.rings.filter(r => r.life > 0);
+      S.shieldA += angDiff(S.shieldTarget, S.shieldA) * Math.min(1, dt * 10);
+    }
+
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------------- panels ---------------- */
+  function showIntro(){
+    el.panel.innerHTML =
+      '<div class="eyebrow">they shoot &nbsp;·&nbsp; you send it back</div>' +
+      '<h1>DEFLECT</h1>' +
+      '<div class="tag">one shield, three lives</div>' +
+      '<p>You are the core. They fire at you from the rim. Move the mouse to swing ' +
+      'your shield around the core and <b>knock every shot back where it came from</b>. ' +
+      'A returned shot kills the thing that fired it.</p>' +
+      '<p>You cannot block everything. Choose what to catch.</p>' +
+      '<button id="begin">begin</button>';
+    el.overlay.classList.remove('hide');
+    document.getElementById('begin').addEventListener('click', () => {
+      tone(520, 0.1, 'sine', 0.03, 720);
+      reset();
+    });
+  }
+
+  function showEnd(){
+    const secs = Math.floor(S.t);
+    el.panel.innerHTML =
+      '<div class="eyebrow">core lost</div>' +
+      '<div class="big">' + S.score + '</div>' +
+      '<div class="sub">best ' + S.best + '</div>' +
+      '<div class="row">' +
+        '<div><span class="v">' + S.kills + '</span><span class="k">returned</span></div>' +
+        '<div><span class="v">' + secs + 's</span><span class="k">survived</span></div>' +
+        '<div><span class="v">' + Math.min(10, 2 + Math.floor(S.t / 10)) + '</span><span class="k">shooters</span></div>' +
+      '</div>' +
+      '<button id="again">again</button>';
+    el.overlay.classList.remove('hide');
+    document.getElementById('again').addEventListener('click', reset);
+  }
+
+  /* ---------------- input ---------------- */
+  function aim(x, y){
+    const dx = x - CX, dy = y - CY;
+    if(dx * dx + dy * dy > 9) S.shieldTarget = Math.atan2(dy, dx);
+  }
+  canvas.addEventListener('mousemove', e => aim(e.clientX, e.clientY));
+  canvas.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    aim(t.clientX, t.clientY);
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    aim(t.clientX, t.clientY);
+    e.preventDefault();
+  }, { passive: false });
+
+  /* ---------------- boot ---------------- */
+  resize();
+  updateHud();
+  showIntro();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
